@@ -30,6 +30,33 @@ The database is kept:
 podman-compose down && podman-compose up -d --build
 ```
 
+## Container image
+
+GitHub Actions builds the image with podman on every push and pull request, after the tests pass
+against PostgreSQL, then starts it and tests it. Pushes publish it to
+`ghcr.io/jvzantvoort/bundle-ui`; pull requests don't.
+
+| Pushed to | Image tags |
+| --- | --- |
+| `main` | `latest`, `sha-<commit>` |
+| Tag `v1.2.3` | `1.2.3`, `sha-<commit>` |
+
+To run the published image instead of building locally, set this in `.env`:
+
+```sh
+BUNDLE_UI_IMAGE=ghcr.io/jvzantvoort/bundle-ui:latest
+```
+
+Then pull it and recreate the containers, without `--build`. While the repository is private,
+log in first with a token that has the `read:packages` scope:
+
+```sh
+gh auth refresh --scopes read:packages
+gh auth token | podman login ghcr.io --username jvzantvoort --password-stdin
+podman-compose pull web
+podman-compose down && podman-compose up -d
+```
+
 ## Access
 
 With `REQUIRE_LOGIN=false`, anyone who can reach the port can use the UI with no login: they can

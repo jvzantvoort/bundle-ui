@@ -1,0 +1,133 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    name: Test against PostgreSQL
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: docker.io/library/postgres:17-alpine
+        env:
+          POSTGRES_DB: bundleui
+          POSTGRES_USER: bundleui
+          POSTGRES_PASSWORD: ci-only
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U bundleui -d bundleui"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 20
+    env:
+      POSTGRES_HOST: localhost
+      POSTGRES_DB: bundleui
+      POSTGRES_USER: bundleui
+      POSTGRES_PASSWORD: ci-only
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - run: pip install -r requirements.txt
+      - name: Check migrations match the models
+        run: python manage.py makemigrations --check --dry-run
+        env:
+          DJANGO_DEBUG: '1'
+      - run: python manage.py test catalog
+
+  image:
+    name: Build and publish container image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Work out image name and tags
+        id: meta
+        run: |
+          image="ghcr.io/${GITHUB_REPOSITORY,,}"
+          tags="sha-${GITHUB_SHA::12}"
+          if [ "$GITHUB_REF" = "refs/heads/main" ]; then
+            tags="$tags latest"
+          elif [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            tags="$tags ${GITHUB_REF_NAME#v}"
+          fi
+          echo "image=$image" >> "$GITHUB_OUTPUT"
+          echo "tags=$tags" >> "$GITHUB_OUTPUT"
+
+      - name: Build image
+        run: |
+          podman build \
+            --file Containerfile \
+            --tag bundle-ui:ci \
+            --label "org.opencontainers.image.source=https://github.com/$GITHUB_REPOSITORY" \
+            --label "org.opencontainers.image.revision=$GITHUB_SHA" \
+            --label "org.opencontainers.image.title=bundle-ui" \
+            .
+
+      - name: Check the image holds no local secrets and runs unprivileged
+        run: |
+          podman run --rm --entrypoint sh bundle-ui:ci -c '
+            test ! -e /app/.env && test ! -e /app/CLAUDE.md && test "$(id -u)" != 0'
+
+      - name: Start the built image and test it
+        run: |
+          podman run --detach --name smoke --publish 127.0.0.1:8000:8000 \
+            --env DJANGO_SECRET_KEY=ci-only \
+            --env SQLITE_PATH=/tmp/db.sqlite3 \
+            bundle-ui:ci
+          trap 'podman logs smoke' EXIT
+          curl --silent --show-error --fail --retry 20 --retry-delay 2 --retry-all-errors \
+            --output /dev/null http://127.0.0.1:8000/healthz
+          curl --silent --show-error --fail --output /dev/null http://127.0.0.1:8000/static/catalog/keyboard.js
+          # With the default settings, the app must ask for a login.
+          status=$(curl --silent --output /dev/null --write-out '%{http_code}' http://127.0.0.1:8000/servers/)
+          test "$status" = 302
+
+      - name: Log in to the GitHub container registry
+        if: github.event_name == 'push'
+        env:
+          TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: echo "$TOKEN" | podman login ghcr.io --username "$GITHUB_ACTOR" --password-stdin
+
+      - name: Publish image
+        if: github.event_name == 'push'
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          for tag in $TAGS; do
+            podman push bundle-ui:ci "docker://$IMAGE:$tag"
+          done
+
+      - name: Confirm the published image can be pulled
+        if: github.event_name == 'push'
+        env:
+          IMAGE: ${{ steps.meta.outputs.image }}
+          TAGS: ${{ steps.meta.outputs.tags }}
+        run: |
+          for tag in $TAGS; do
+            podman pull "$IMAGE:$tag"
+          done
+          {
+            echo "### Published image"
+            for tag in $TAGS; do echo "- \`$IMAGE:$tag\`"; done
+          } >> "$GITHUB_STEP_SUMMARY"
