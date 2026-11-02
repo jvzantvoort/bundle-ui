@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% load catalog_extras %}
+{% block title %}Verification{% endblock %}
+{% block head %}{% if not run.finished %}<meta http-equiv="refresh" content="2">{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Verification of {% if bundle.title %}{{ bundle.title }}{% else %}<em>(untitled)</em>{% endif %}</h1>
+    <p class="muted mono break">{{ bundle.checksum }}</p>
+  </div>
+  <div class="actions">
+    <a class="button" href="{% url 'bundle_detail' server.pk pool.name bundle.checksum %}" data-key="b" data-key-label="Back to bundle"><kbd>b</kbd> Back to bundle</a>
+  </div>
+</div>
+
+<div class="card" role="status" aria-live="polite">
+  {% if not run.finished %}
+  <p><span class="badge warn">{{ run.get_status_display }}</span> The server is recomputing every file checksum. This page refreshes itself; large bundles can take a while.</p>
+  {% elif run.status == 'failed' %}
+  <p><span class="badge bad">Task failed</span> The check could not finish, so this says nothing about the bundle's integrity.</p>
+  {% if run.error %}<p>{{ run.error }}</p>{% endif %}
+  {% elif run.verified %}
+  <p><span class="badge ok">Valid</span> All {{ run.files_checked }} files match their checksums.</p>
+  {% else %}
+  <p><span class="badge bad">Invalid</span> {{ run.corrupted_files|length }} problem(s) in {{ run.files_checked }} files checked.</p>
+  {% endif %}
+  <p class="muted">Started {{ run.created_at|isotime }}{% if run.finished_at %}, finished {{ run.finished_at|isotime }}{% endif %}. Task <span class="mono">{{ run.task_id }}</span>.</p>
+</div>
+
+{% if run.corrupted_files %}
+<div class="card table-wrap">
+  <h2>Problems</h2>
+  <table>
+    <thead><tr><th>Path</th><th>Reason</th><th>Expected</th><th>Actual</th></tr></thead>
+    <tbody>
+      {% for item in run.corrupted_files %}
+      <tr>
+        <td class="break">{{ item.path }}</td>
+        <td>{{ item.reason }}</td>
+        <td class="mono" title="{{ item.expected|default:'' }}">{{ item.expected|shortsum|default:"—" }}</td>
+        <td class="mono" title="{{ item.actual|default:'' }}">{{ item.actual|shortsum|default:"—" }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+{% endif %}
+{% endblock %}

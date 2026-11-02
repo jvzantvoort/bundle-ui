@@ -1,0 +1,96 @@
+{% extends "base.html" %}
+{% load catalog_extras %}
+{% block title %}Health of {{ server.name }}{% endblock %}
+{% block head %}{% if auto %}<meta http-equiv="refresh" content="30">{% endif %}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Health of {{ server.name }}</h1>
+    <p class="muted"><span class="mono break">{{ server.base_url }}</span> · checked {{ checked_at|isotime }}</p>
+  </div>
+  <div class="actions">
+    <a class="button" href="{% url 'server_status' server.pk %}{% if auto %}?auto=1{% endif %}" data-key="r" data-key-label="Check again">Check again <kbd>r</kbd></a>
+    {% if auto %}
+    <a class="button" href="{% url 'server_status' server.pk %}" data-key="a" data-key-label="Stop auto-refresh">Stop auto-refresh <kbd>a</kbd></a>
+    {% else %}
+    <a class="button" href="{% url 'server_status' server.pk %}?auto=1" data-key="a" data-key-label="Auto-refresh every 30 seconds">Auto-refresh <kbd>a</kbd></a>
+    {% endif %}
+  </div>
+</div>
+
+<div class="columns">
+  <section class="card" aria-labelledby="health-heading">
+    <h2 id="health-heading">Service</h2>
+    <dl class="facts">
+      <dt>Health</dt>
+      <dd>
+        {% if health %}<span class="badge ok">{{ health.status }}</span> <span class="muted">{{ latency_ms }} ms</span>
+        {% else %}<span class="badge bad">unavailable</span> {{ health_error }}{% endif %}
+      </dd>
+      <dt>API token</dt>
+      <dd>
+        {% if capabilities %}<span class="badge ok">accepted</span>
+        {% else %}<span class="badge bad">not working</span>{% endif %}
+        {% if token_expiry %}
+        <span class="muted">{% if token_expired %}<code>exp</code> passed{% else %}<code>exp</code>{% endif %} {{ token_expiry|isotime }}</span>
+        {% if token_expired and capabilities %}<span class="badge warn">server accepts it anyway</span>{% endif %}
+        {% endif %}
+      </dd>
+      {% if capabilities %}
+      <dt>Server version</dt><dd>{{ capabilities.server_version }}</dd>
+      <dt>API version</dt><dd>{{ capabilities.api_version }}</dd>
+      <dt>Bundle formats</dt><dd>{{ capabilities.bundle_versions|join:", " }}</dd>
+      <dt>Checksums</dt><dd>{{ capabilities.checksum_algorithms|join:", " }}</dd>
+      {% elif capabilities_error %}
+      <dt>Capabilities</dt><dd>{{ capabilities_error }}</dd>
+      {% endif %}
+    </dl>
+  </section>
+
+  {% if capabilities %}
+  <section class="card" aria-labelledby="limits-heading">
+    <h2 id="limits-heading">Upload limits</h2>
+    <dl class="facts">
+      <dt>Files per bundle</dt><dd>{{ capabilities.upload_limits.max_manifest_entries }}</dd>
+      <dt>File size</dt><dd>{{ capabilities.upload_limits.max_file_bytes|filesizeformat }}</dd>
+      <dt>Bundle size</dt><dd>{{ capabilities.upload_limits.max_bundle_bytes|filesizeformat }}</dd>
+      <dt>Upload window</dt><dd>{{ capabilities.upload_limits.upload_ttl_seconds }} seconds</dd>
+    </dl>
+  </section>
+  {% endif %}
+</div>
+
+{% if pools_error %}<div class="card"><span class="badge bad">Pools unavailable</span> {{ pools_error }}</div>{% endif %}
+
+{% for entry in pool_stats %}
+<section class="card" aria-labelledby="pool-{{ entry.pool.pk }}">
+  <h2 id="pool-{{ entry.pool.pk }}"><a href="{% url 'bundle_list' server.pk entry.pool.name %}">{{ entry.pool.title|default:entry.pool.name }}</a> <span class="muted mono">{{ entry.pool.name }}</span></h2>
+  {% if entry.error %}<p><span class="badge bad">Statistics unavailable</span> {{ entry.error }}</p>{% endif %}
+  {% if entry.stats %}
+  <div class="columns" style="margin-bottom:0">
+    <dl class="facts">
+      <dt>Bundles</dt><dd>{{ entry.stats.storage.bundle_count }}</dd>
+      <dt>Files</dt><dd>{{ entry.stats.storage.file_count }}</dd>
+      <dt>Content</dt><dd>{{ entry.stats.storage.content_bytes|filesizeformat }}</dd>
+      <dt>Metadata</dt><dd>{{ entry.stats.storage.metadata_bytes|filesizeformat }}</dd>
+      <dt>Total</dt><dd>{{ entry.stats.storage.total_bytes|filesizeformat }}</dd>
+      {% if entry.used_percent is not None %}
+      <dt>Filesystem</dt>
+      <dd>
+        <meter min="0" max="100" high="90" value="{{ entry.used_percent }}" aria-label="Filesystem used">{{ entry.used_percent }}%</meter>
+        {{ entry.stats.storage.filesystem_available_bytes|filesizeformat }} free of {{ entry.stats.storage.filesystem_capacity_bytes|filesizeformat }}
+      </dd>
+      {% endif %}
+    </dl>
+    <dl class="facts">
+      <dt>Verified</dt><dd>{{ entry.stats.integrity.verified_bundles }}</dd>
+      <dt>Failed</dt><dd>{% if entry.stats.integrity.failed_bundles %}<span class="badge bad">{{ entry.stats.integrity.failed_bundles }}</span>{% else %}0{% endif %}</dd>
+      <dt>Unchecked</dt><dd>{{ entry.stats.integrity.unchecked_bundles }}</dd>
+      <dt>Last verified</dt><dd>{{ entry.stats.integrity.last_verified_at|isotime }}</dd>
+      <dt>Local cache sync</dt><dd>{{ entry.pool.last_synced_at|isotime }} · {{ entry.pool.get_sync_status_display }}</dd>
+    </dl>
+  </div>
+  {% endif %}
+</section>
+{% endfor %}
+{% endblock %}

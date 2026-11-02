@@ -1,0 +1,162 @@
+{% extends "base.html" %}
+{% load catalog_extras %}
+{% block title %}{{ remote.title|default:"Untitled bundle" }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>{% if remote.title %}{{ remote.title }}{% else %}<em>(untitled)</em>{% endif %}</h1>
+    <p class="muted mono break">{{ bundle.checksum }}</p>
+  </div>
+  <div class="actions">
+    <a class="button" href="{% url 'bundle_list' server.pk pool.name %}" data-key="b" data-key-label="Back to bundles"><kbd>b</kbd> Bundles</a>
+    {% if not offline %}
+    <form method="post" action="{% url 'bundle_verify' server.pk pool.name bundle.checksum %}">
+      {% csrf_token %}
+      <button type="submit" class="primary" data-key="v" data-key-label="Verify bundle">Verify <kbd>v</kbd></button>
+    </form>
+    {% endif %}
+  </div>
+</div>
+
+<div class="columns">
+  <section class="card" aria-labelledby="facts-heading">
+    <h2 id="facts-heading">Server metadata</h2>
+    <dl class="facts">
+      <dt>State</dt>
+      <dd>
+        {% if bundle.verified %}<span class="badge ok">verified</span>
+        {% elif bundle.last_checked %}<span class="badge bad">verification failed</span>
+        {% else %}<span class="badge warn">not checked</span>{% endif %}
+      </dd>
+      <dt>Last checked</dt><dd>{{ bundle.last_checked|isotime }}</dd>
+      <dt>Author</dt><dd>{{ remote.author }}</dd>
+      <dt>Created</dt><dd>{{ remote.created_at|isotime }}</dd>
+      <dt>Format version</dt><dd>{{ remote.version }}</dd>
+      <dt>Files</dt><dd>{{ remote.file_count }}</dd>
+      <dt>Size</dt><dd>{{ remote.size_bytes|filesizeformat }}</dd>
+      {% if remote.state.replicas %}<dt>Replicas</dt><dd>{% for replica in remote.state.replicas %}<span class="mono">{{ replica }}</span>{% if not forloop.last %}, {% endif %}{% endfor %}</dd>{% endif %}
+    </dl>
+    {% if not offline %}
+    <hr style="border:0;border-top:1px solid var(--border);margin:1rem 0">
+    <form method="post" action="{% url 'bundle_title' server.pk pool.name bundle.checksum %}">
+      {% csrf_token %}
+      <input type="hidden" name="revision" value="{{ bundle.revision }}">
+      <label for="id_title">Title <kbd>e</kbd></label>
+      <div class="inline">
+        <input id="id_title" name="title" maxlength="256" value="{{ remote.title }}" data-key="e" data-key-label="Edit title">
+        <button type="submit" class="primary">Save</button>
+      </div>
+      <span class="helptext">The title is the only metadata the server lets you change. Changing it doesn't affect the checksum.</span>
+    </form>
+    {% endif %}
+  </section>
+
+  <section class="card" aria-labelledby="tags-heading">
+    <h2 id="tags-heading">Tags</h2>
+    {% if tags %}
+    <table>
+      <tbody>
+        {% for tag in tags %}
+        <tr>
+          <td class="break"><a href="{% url 'bundle_list' server.pk pool.name %}?tag={{ tag|urlencode:'' }}">{{ tag }}</a></td>
+          {% if not offline %}
+          <td>
+            <form method="post" action="{% url 'bundle_tag_rename' server.pk pool.name bundle.checksum %}" class="inline">
+              {% csrf_token %}
+              <input type="hidden" name="revision" value="{{ bundle.revision }}">
+              <input type="hidden" name="old" value="{{ tag }}">
+              <input name="new" required maxlength="64" list="pool-tags" aria-label="New name for tag {{ tag }}" placeholder="New name">
+              <button type="submit">Rename</button>
+            </form>
+          </td>
+          <td>
+            <form method="post" action="{% url 'bundle_tag_remove' server.pk pool.name bundle.checksum %}" data-confirm="Remove tag {{ tag }} from this bundle?">
+              {% csrf_token %}
+              <input type="hidden" name="revision" value="{{ bundle.revision }}">
+              <input type="hidden" name="tag" value="{{ tag }}">
+              <button type="submit" class="danger" aria-label="Remove tag {{ tag }}">Remove</button>
+            </form>
+          </td>
+          {% endif %}
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="empty">No tags yet.</p>
+    {% endif %}
+    {% if not offline %}
+    <form method="post" action="{% url 'bundle_tag_add' server.pk pool.name bundle.checksum %}" style="margin-top:.75rem">
+      {% csrf_token %}
+      <input type="hidden" name="revision" value="{{ bundle.revision }}">
+      <label for="id_new_tag">Add tag <kbd>t</kbd></label>
+      <div class="inline">
+        <input id="id_new_tag" name="tag" required maxlength="64" list="pool-tags" data-key="t" data-key-label="Add tag">
+        <button type="submit">Add</button>
+      </div>
+    </form>
+    {% endif %}
+    {% include "catalog/_tag_datalist.html" %}
+  </section>
+</div>
+
+<section class="card" aria-labelledby="local-heading">
+  <h2 id="local-heading">Local metadata</h2>
+  <p class="card-note">Stored only in this app's database. It is never sent to the bundle-server.</p>
+  <form method="post" action="{% url 'bundle_local_metadata' server.pk pool.name bundle.checksum %}">
+    {% csrf_token %}
+    <div class="form-grid" style="grid-template-columns:repeat(auto-fit,minmax(280px,1fr))">
+      <div>
+        <label for="{{ local_form.notes.id_for_label }}">Notes <kbd>m</kbd></label>
+        <textarea id="{{ local_form.notes.id_for_label }}" name="notes" rows="3" data-key="m" data-key-label="Edit local notes">{{ bundle.notes }}</textarea>
+      </div>
+      <div>
+        {{ local_form.attributes.label_tag }}{{ local_form.attributes }}
+        <span class="helptext">{{ local_form.attributes.help_text }}</span>
+      </div>
+    </div>
+    <p style="margin:.75rem 0 0"><button type="submit">Save local metadata</button></p>
+  </form>
+</section>
+
+{% if runs %}
+<section class="card table-wrap" aria-labelledby="runs-heading">
+  <h2 id="runs-heading">Recent verifications from this UI</h2>
+  <table>
+    <thead><tr><th>Started</th><th>Status</th><th>Result</th></tr></thead>
+    <tbody>
+      {% for run in runs %}
+      <tr>
+        <td><a href="{% url 'verification_detail' server.pk pool.name run.pk %}">{{ run.created_at|isotime }}</a></td>
+        <td>{{ run.get_status_display }}</td>
+        <td>{% if run.verified is True %}<span class="badge ok">valid</span>{% elif run.verified is False %}<span class="badge bad">invalid</span>{% else %}—{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</section>
+{% endif %}
+
+<section class="card table-wrap" aria-labelledby="files-heading">
+  <h2 id="files-heading">Files</h2>
+  {% if offline %}
+  <p class="empty">The file list needs a connection to the server.</p>
+  {% elif files %}
+  <table>
+    <thead><tr><th>Path</th><th>Checksum</th><th class="num">Size</th></tr></thead>
+    <tbody>
+      {% for file in files %}
+      <tr data-row>
+        <td class="break"><span tabindex="-1" data-row-link>{{ file.path }}</span></td>
+        <td class="mono" title="{{ file.checksum }}">{{ file.checksum|shortsum }}</td>
+        <td class="num">{{ file.size_bytes|filesizeformat }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% include "catalog/_pager.html" %}
+  {% else %}
+  <p class="empty">This bundle has no files.</p>
+  {% endif %}
+</section>
+{% endblock %}

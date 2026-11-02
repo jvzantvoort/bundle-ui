@@ -1,0 +1,32 @@
+{% load catalog_extras %}
+{% if rows %}
+<table>
+  <thead>
+    <tr><th>Title</th><th>Checksum</th><th>Tags</th><th>Author</th><th>Created</th><th class="num">Files</th><th class="num">Size</th><th>State</th></tr>
+  </thead>
+  <tbody>
+    {% for row in rows %}
+    <tr data-row>
+      <td>
+        <a data-row-link href="{% url 'bundle_detail' server.pk pool.name row.checksum %}">{% if row.title %}{{ row.title }}{% else %}<em>(untitled)</em>{% endif %}</a>
+        {% if row.matching_files %}
+        <ul class="muted mono break">
+          {% for file in row.matching_files|slice:":5" %}<li>{{ file.path }}</li>{% endfor %}
+          {% if row.matching_files|length > 5 %}<li>and {{ row.matching_files|length|add:"-5" }} more</li>{% endif %}
+        </ul>
+        {% endif %}
+      </td>
+      <td class="mono" title="{{ row.checksum }}">{{ row.checksum|shortsum }}</td>
+      <td>{% for tag in row.tags %}<span class="tag">{{ tag }}</span>{% empty %}<span class="muted">—</span>{% endfor %}</td>
+      <td>{{ row.author }}</td>
+      <td>{{ row.created_at|isotime }}</td>
+      <td class="num">{{ row.file_count }}</td>
+      <td class="num">{{ row.size_bytes|filesizeformat }}</td>
+      <td>{% if row.verified %}<span class="badge ok">verified</span>{% else %}<span class="badge warn">not verified</span>{% endif %}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No bundles match.</p>
+{% endif %}

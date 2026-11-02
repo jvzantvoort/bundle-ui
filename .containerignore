@@ -1,0 +1,8 @@
+.env
+.env.*
+.git
+.venv
+CLAUDE.md
+*.sqlite3
+__pycache__
+staticfiles

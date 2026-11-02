@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% block title %}Query {{ pool.name }}{% endblock %}
+{% block content %}
+<h1>Query {{ pool.title|default:pool.name }}</h1>
+<p class="muted">Every filter you fill in must match. File filters search inside all bundles in the pool.</p>
+
+<form method="get" class="card" aria-label="Query bundles">
+  {{ form.non_field_errors }}
+  <div class="form-grid">
+    {% for field in form %}
+    <div>
+      {{ field.label_tag }}{{ field }}
+      {% if field.help_text %}<span class="helptext">{{ field.help_text }}</span>{% endif %}
+      {{ field.errors }}
+    </div>
+    {% endfor %}
+  </div>
+  <p style="margin:.75rem 0 0" class="actions">
+    <button type="submit" class="primary" data-key="r" data-key-label="Run query">Run query <kbd>r</kbd></button>
+    <a class="button" href="{% url 'bundle_query' server.pk pool.name %}">Clear</a>
+  </p>
+  {% include "catalog/_tag_datalist.html" %}
+</form>
+
+{% if ran %}
+<div class="card table-wrap">
+  <h2>Results</h2>
+  {% include "catalog/_bundle_table.html" %}
+  {% include "catalog/_pager.html" %}
+</div>
+{% endif %}
+{% endblock %}

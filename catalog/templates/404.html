@@ -1,0 +1,7 @@
+{% extends "base.html" %}
+{% block title %}Not found{% endblock %}
+{% block content %}
+<h1>Not found</h1>
+<p>That page, pool or bundle doesn't exist, or the server can't provide it right now.</p>
+<p><a class="button" href="{% url 'home' %}" data-key="b" data-key-label="Go home">Go home <kbd>b</kbd></a></p>
+{% endblock %}

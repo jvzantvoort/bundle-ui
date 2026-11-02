@@ -1,0 +1,42 @@
+{% extends "base.html" %}
+{% block title %}Servers{% endblock %}
+{% block content %}
+<div class="page-head">
+  <h1>Servers</h1>
+  <div class="actions">
+    <a class="button primary" href="{% url 'server_add' %}" data-key="a" data-key-label="Add server">Add server <kbd>a</kbd></a>
+  </div>
+</div>
+<div class="card table-wrap">
+  {% if servers %}
+  <table>
+    <thead><tr><th>Name</th><th>API URL</th><th>Actions</th></tr></thead>
+    <tbody>
+      {% for server in servers %}
+      <tr data-row>
+        <td><a data-row-link href="{% url 'pool_list' server.pk %}">{{ server.name }}</a>
+          {% if current_server.pk == server.pk %}<span class="badge ok">selected</span>{% endif %}</td>
+        <td class="mono break">{{ server.base_url }}</td>
+        <td>
+          <div class="actions">
+            <a class="button" href="{% url 'server_status' server.pk %}">Health</a>
+            {% if server.managed_by_env %}
+            <span class="muted">Set in .env</span>
+            {% else %}
+            <a class="button" href="{% url 'server_edit' server.pk %}">Edit</a>
+            <form method="post" action="{% url 'server_delete' server.pk %}"
+                  data-confirm="Remove {{ server.name }} and its cached data, including local notes? Nothing on the server is changed.">
+              {% csrf_token %}<button type="submit" class="danger">Remove</button>
+            </form>
+            {% endif %}
+          </div>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No servers yet. Add one to get started.</p>
+  {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,63 @@
+{% load static %}<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="data:,">
+  <title>{% block title %}Bundle UI{% endblock %} · Bundle UI</title>
+  <link rel="stylesheet" href="{% static 'catalog/app.css' %}">
+  <script src="{% static 'catalog/keyboard.js' %}" defer></script>
+  {% block head %}{% endblock %}
+</head>
+<body>
+  <a class="skip" href="#main">Skip to content</a>
+  <header class="topbar">
+    <div class="topbar-inner">
+      <a class="brand" href="{% url 'home' %}">Bundle UI</a>
+      {% if show_nav %}
+      <nav aria-label="Main">
+        <ul class="nav">
+          <li><a href="{% url 'server_list' %}" data-key="g s" data-key-label="Servers" aria-keyshortcuts="g s"
+                 {% if nav_section == 'server_list' %}aria-current="page"{% endif %}>Servers</a></li>
+          {% if current_server %}
+          <li><a href="{% url 'pool_list' current_server.pk %}" data-key="g p" data-key-label="Pools" aria-keyshortcuts="g p"
+                 {% if nav_section == 'pool_list' %}aria-current="page"{% endif %}>Pools</a></li>
+          {% if current_pool %}
+          <li><a href="{% url 'bundle_list' current_server.pk current_pool %}" data-key="g b" data-key-label="Bundles" aria-keyshortcuts="g b"
+                 {% if nav_section == 'bundle_list' %}aria-current="page"{% endif %}>Bundles</a></li>
+          <li><a href="{% url 'bundle_query' current_server.pk current_pool %}" data-key="g q" data-key-label="Query" aria-keyshortcuts="g q"
+                 {% if nav_section == 'bundle_query' %}aria-current="page"{% endif %}>Query</a></li>
+          <li><a href="{% url 'tag_list' current_server.pk current_pool %}" data-key="g t" data-key-label="Tags" aria-keyshortcuts="g t"
+                 {% if nav_section == 'tag_list' %}aria-current="page"{% endif %}>Tags</a></li>
+          {% endif %}
+          <li><a href="{% url 'server_status' current_server.pk %}" data-key="g h" data-key-label="Server health" aria-keyshortcuts="g h"
+                 {% if nav_section == 'server_status' %}aria-current="page"{% endif %}>Health</a></li>
+          {% endif %}
+        </ul>
+      </nav>
+      <div class="topbar-end">
+        {% if current_server %}<span class="crumb">{{ current_server.name }}{% if current_pool %} / {{ current_pool }}{% endif %}</span>{% endif %}
+        <button type="button" id="shortcut-help-open" title="Keyboard shortcuts"><kbd>?</kbd> Keys</button>
+        {% if user.is_authenticated %}<form method="post" action="{% url 'logout' %}">{% csrf_token %}<button type="submit">Log out</button></form>{% endif %}
+      </div>
+      {% endif %}
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    {% if messages %}
+    <ul class="messages" role="status" aria-live="polite">
+      {% for message in messages %}<li class="{{ message.tags }}">{{ message }}</li>{% endfor %}
+    </ul>
+    {% endif %}
+    {% block content %}{% endblock %}
+  </main>
+
+  <dialog id="shortcut-help" aria-labelledby="shortcut-help-title">
+    <h2 id="shortcut-help-title">Keyboard shortcuts on this page</h2>
+    <dl data-help-list></dl>
+    <button type="button" data-help-close>Close <kbd>Esc</kbd></button>
+  </dialog>
+  <div id="chord-hint" hidden aria-hidden="true"></div>
+</body>
+</html>

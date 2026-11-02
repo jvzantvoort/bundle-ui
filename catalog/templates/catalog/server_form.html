@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{% if server %}Edit {{ server.name }}{% else %}Add server{% endif %}{% endblock %}
+{% block content %}
+<h1>{% if server %}Edit {{ server.name }}{% else %}Add server{% endif %}</h1>
+<div class="card">
+  <form method="post" class="form-stack">
+    {% csrf_token %}
+    {{ form.as_div }}
+    <div class="actions">
+      <button type="submit" class="primary">Save</button>
+      <a class="button" href="{% url 'server_list' %}">Cancel</a>
+    </div>
+  </form>
+</div>
+{% endblock %}

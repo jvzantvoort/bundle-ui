@@ -1,0 +1,34 @@
+{% extends "base.html" %}
+{% load catalog_extras %}
+{% block title %}Bundles in {{ pool.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Bundles in {{ pool.title|default:pool.name }}</h1>
+    <p class="muted">Last sync: {{ pool.last_synced_at|isotime }} · {{ pool.get_sync_status_display }}{% if pool.sync_error %}: {{ pool.sync_error }}{% endif %}</p>
+  </div>
+  <form method="post" action="{% url 'pool_sync' server.pk pool.name %}" class="actions">
+    {% csrf_token %}
+    <button type="submit" data-key="s" data-key-label="Sync pool to local cache">Sync cache <kbd>s</kbd></button>
+  </form>
+</div>
+
+<form method="get" class="card" role="search" aria-label="Filter bundles">
+  <div class="form-grid">
+    {% for field in form %}
+    <div>{{ field.label_tag }}{{ field }}{{ field.errors }}</div>
+    {% endfor %}
+  </div>
+  <p style="margin:.75rem 0 0" class="actions">
+    <button type="submit" class="primary">Filter</button>
+    <a class="button" href="{% url 'bundle_list' server.pk pool.name %}">Clear</a>
+    <span class="muted"><kbd>/</kbd> to search, <kbd>Enter</kbd> to apply</span>
+  </p>
+  {% include "catalog/_tag_datalist.html" %}
+</form>
+
+<div class="card table-wrap">
+  {% include "catalog/_bundle_table.html" %}
+  {% include "catalog/_pager.html" %}
+</div>
+{% endblock %}

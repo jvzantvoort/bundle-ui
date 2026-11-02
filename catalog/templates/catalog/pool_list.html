@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% load catalog_extras %}
+{% block title %}Pools on {{ server.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div><h1>Pools on {{ server.name }}</h1><p class="muted mono break">{{ server.base_url }}</p></div>
+</div>
+<div class="card table-wrap">
+  {% if pools %}
+  <table>
+    <thead><tr><th>Pool</th><th>Title</th><th class="num">Bundles</th><th>Last sync</th></tr></thead>
+    <tbody>
+      {% for pool in pools %}
+      <tr data-row>
+        <td><a data-row-link href="{% url 'bundle_list' server.pk pool.name %}">{{ pool.name }}</a>
+          {% if current_pool == pool.name %}<span class="badge ok">selected</span>{% endif %}</td>
+        <td>{{ pool.title }}</td>
+        <td class="num">{{ pool.bundle_count|default_if_none:"—" }}</td>
+        <td>{{ pool.last_synced_at|isotime }}{% if pool.sync_status == 'error' %} <span class="badge bad">failed</span>{% endif %}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No pools to show.</p>
+  {% endif %}
+</div>
+{% endblock %}

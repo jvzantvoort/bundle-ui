@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% load catalog_extras %}
+{% block title %}Tags in {{ pool.name }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Tags in {{ pool.title|default:pool.name }}</h1>
+    <p class="muted">Counts come from the local cache. Last sync: {{ pool.last_synced_at|isotime }} · {{ pool.get_sync_status_display }}{% if pool.sync_error %}: {{ pool.sync_error }}{% endif %}</p>
+  </div>
+  <form method="post" action="{% url 'pool_sync' server.pk pool.name %}" class="actions">
+    {% csrf_token %}
+    <input type="hidden" name="next_section" value="tags">
+    <button type="submit" data-key="s" data-key-label="Sync pool to local cache">Sync cache <kbd>s</kbd></button>
+  </form>
+</div>
+
+<div class="card table-wrap">
+  {% if tags %}
+  <p class="card-note">Rename and Delete change every bundle in this pool that has the tag, on the server.</p>
+  <table>
+    <thead><tr><th>Tag</th><th class="num">Bundles</th><th>Rename everywhere</th><th>Delete everywhere</th></tr></thead>
+    <tbody>
+      {% for tag in tags %}
+      <tr data-row>
+        <td class="break"><a data-row-link href="{% url 'bundle_list' server.pk pool.name %}?tag={{ tag.name|urlencode:'' }}">{{ tag.name }}</a></td>
+        <td class="num">{{ tag.count }}</td>
+        <td>
+          <form method="post" action="{% url 'pool_tag_rename' server.pk pool.name %}" class="inline"
+                data-confirm="Rename {{ tag.name }} on all bundles in this pool?">
+            {% csrf_token %}
+            <input type="hidden" name="old" value="{{ tag.name }}">
+            <input name="new" required maxlength="64" aria-label="New name for tag {{ tag.name }}" placeholder="New name">
+            <button type="submit">Rename</button>
+          </form>
+        </td>
+        <td>
+          <form method="post" action="{% url 'pool_tag_delete' server.pk pool.name %}"
+                data-confirm="Delete {{ tag.name }} from all bundles in this pool?">
+            {% csrf_token %}
+            <input type="hidden" name="old" value="{{ tag.name }}">
+            <button type="submit" class="danger" aria-label="Delete tag {{ tag.name }}">Delete</button>
+          </form>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No tags in the cache. Sync the cache to load them, or add one on a bundle's page.</p>
+  {% endif %}
+</div>
+{% endblock %}
