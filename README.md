@@ -47,8 +47,9 @@ To run the published image instead of building locally, set this in `.env`:
 BUNDLE_UI_IMAGE=ghcr.io/jvzantvoort/bundle-ui:latest
 ```
 
-Then pull it and recreate the containers, without `--build`. While the repository is private,
-log in first with a token that has the `read:packages` scope:
+Then pull it and recreate the containers, without `--build`. The image's visibility is set
+separately from the repository's. While the image is private, log in first with a token that has
+the `read:packages` scope:
 
 ```sh
 gh auth refresh --scopes read:packages
