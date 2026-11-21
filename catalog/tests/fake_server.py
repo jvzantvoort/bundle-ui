@@ -62,6 +62,11 @@ class FakeState:
         self.requests = []
 
 
+def file_content(path):
+    """Stand-in bytes for a file; the UI passes them through unchanged."""
+    return f"content of {path}".encode()
+
+
 def summary(bundle):
     keys = ("checksum", "title", "author", "created_at", "version", "file_count", "size_bytes", "verified")
     return {key: bundle[key] for key in keys}
@@ -115,6 +120,14 @@ class Handler(BaseHTTPRequestHandler):
 
     def error(self, status, code, message):
         self.reply(status, {"code": code, "message": message})
+
+    def reply_bytes(self, raw, etag):
+        self.send_response(200)
+        self.send_header("Content-Type", "application/octet-stream")
+        self.send_header("Content-Length", str(len(raw)))
+        self.send_header("ETag", etag)
+        self.end_headers()
+        self.wfile.write(raw)
 
     def handle_any(self):
         length = int(self.headers.get("Content-Length") or 0)
@@ -234,6 +247,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply(200, paged(
                 bundle["files"], int(query.get("page", 1)), int(query.get("page_size", 50))
             ))
+        if rest.startswith("/files/") and self.command == "GET":
+            wanted = rest.removeprefix("/files/")
+            entry = next((f for f in bundle["files"] if f["path"] == wanted), None)
+            if entry is None:
+                return self.error(404, "file_not_found", "file does not exist in bundle manifest")
+            return self.reply_bytes(file_content(wanted), entry["checksum"])
         if rest == "/verify" and self.command == "POST":
             return self.queue_verify(bundle)
 

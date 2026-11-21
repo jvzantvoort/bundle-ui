@@ -116,6 +116,39 @@ class BundleClient:
         path = self._bundle_path(pool, checksum) + "/files"
         return self._request("GET", path, params={"page": page, "page_size": page_size})[0]
 
+    def list_all_files(self, pool, checksum):
+        """Every manifest entry of a bundle, fetched 100 at a time (the API's largest page)."""
+        files, page = [], 1
+        while True:
+            data = self.list_files(pool, checksum, page=page, page_size=100)
+            files.extend(data["items"])
+            if not data["items"] or page * 100 >= data["total"]:
+                return files
+            page += 1
+
+    def open_file(self, pool, checksum, file_path):
+        """Start downloading one file. The caller reads and closes the streamed response."""
+        url = self.base_url + self._bundle_path(pool, checksum) + "/files/" + quote(file_path, safe="")
+        headers = {"Authorization": f"Bearer {self.token}"} if self.token else {}
+        try:
+            response = requests.get(
+                url,
+                headers=headers,
+                stream=True,
+                timeout=(settings.BUNDLE_API_CONNECT_TIMEOUT, settings.BUNDLE_API_READ_TIMEOUT),
+            )
+        except requests.RequestException as exc:
+            raise ApiError(f"Cannot reach {self.base_url}: {type(exc).__name__}") from exc
+        if response.status_code >= 400:
+            try:
+                body = response.json()
+                message, code = body.get("message", ""), body.get("code", "")
+            except (ValueError, AttributeError):
+                message, code = "", ""
+            response.close()
+            raise ApiError(message or f"HTTP {response.status_code}", response.status_code, code)
+        return response
+
     def update_title(self, pool, checksum, title, revision):
         return self._request(
             "PATCH", self._bundle_path(pool, checksum), json_body={"title": title}, if_match=revision

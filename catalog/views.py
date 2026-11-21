@@ -5,12 +5,13 @@ from django.contrib import messages
 from django.contrib.auth.decorators import login_not_required
 from django.core.paginator import Paginator
 from django.db.models import Count, Q
-from django.http import Http404, HttpResponse
+from django.http import Http404, HttpResponse, StreamingHttpResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
+from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_POST
 
-from . import services
+from . import images, services
 from .client import ApiError, token_expiry
 from .forms import (
     AddTagForm,
@@ -28,6 +29,7 @@ from .forms import (
 from .models import Bundle, BundleTag, Pool, Server, VerificationRun
 
 PAGE_SIZE = 50
+GALLERY_PAGE_SIZE = 48
 
 
 def explain(exc):
@@ -317,6 +319,7 @@ def bundle_detail(request, server_id, pool, checksum):
             remote=data,
             files=files["items"],
             pager=pagination(request, page, PAGE_SIZE, files["total"]),
+            image_count=len(images.image_paths(server, pool_obj.name, checksum, client)),
         )
     except ApiError as exc:
         if exc.status == 404:
@@ -338,6 +341,99 @@ def bundle_detail(request, server_id, pool, checksum):
         runs=bundle.verifications.all()[:5],
     )
     return render(request, "catalog/bundle_detail.html", context)
+
+
+# --- Images ------------------------------------------------------------------------
+
+
+def bundle_images_context(request, server_id, pool, checksum):
+    """Look up a bundle's images, or answer for the page when that is not possible."""
+    server = get_object_or_404(Server, pk=server_id)
+    pool_obj = resolve_pool(server, pool)
+    select(request, server, pool_obj.name)
+    try:
+        paths = images.image_paths(server, pool_obj.name, checksum)
+    except ApiError as exc:
+        if exc.status == 404:
+            raise Http404(exc.message) from exc
+        messages.error(request, f"The images need a connection to the server. {explain(exc)}")
+        return None, redirect("bundle_detail", server.pk, pool_obj.name, checksum)
+    cached = Bundle.objects.filter(pool=pool_obj, checksum=checksum).first()
+    return {
+        "server": server,
+        "pool": pool_obj,
+        "checksum": checksum,
+        "title": cached.title if cached else "",
+        "paths": paths,
+    }, None
+
+
+def bundle_images(request, server_id, pool, checksum):
+    """A grid of the bundle's images, loaded as they scroll into view."""
+    context, response = bundle_images_context(request, server_id, pool, checksum)
+    if response:
+        return response
+    paths = context["paths"]
+    page = page_number(request)
+    start = (page - 1) * GALLERY_PAGE_SIZE
+    context.update(
+        page_paths=paths[start:start + GALLERY_PAGE_SIZE],
+        first_number=start + 1,
+        pager=pagination(request, page, GALLERY_PAGE_SIZE, len(paths)),
+    )
+    return render(request, "catalog/bundle_images.html", context)
+
+
+def image_view(request, server_id, pool, checksum, file_path):
+    """One image of a bundle, with the previous and next ones a key away."""
+    context, response = bundle_images_context(request, server_id, pool, checksum)
+    if response:
+        return response
+    paths = context["paths"]
+    try:
+        index = paths.index(file_path)
+    except ValueError:
+        raise Http404("This bundle has no such image.")
+    context.update(
+        path=file_path,
+        number=index + 1,
+        prev_path=paths[index - 1] if index > 0 else None,
+        next_path=paths[index + 1] if index + 1 < len(paths) else None,
+        gallery_page=index // GALLERY_PAGE_SIZE + 1,
+    )
+    return render(request, "catalog/image_view.html", context)
+
+
+def image_raw(request, server_id, pool, checksum, file_path):
+    """Stream an image from the bundle-server, so the API token stays on the server side."""
+    content_type = images.content_type(file_path)
+    if content_type is None:
+        raise Http404("Only images are shown.")
+    server = get_object_or_404(Server, pk=server_id)
+    pool_obj = resolve_pool(server, pool)
+    try:
+        upstream = server.client().open_file(pool_obj.name, checksum, file_path)
+    except ApiError as exc:
+        if exc.status == 404:
+            raise Http404(exc.message) from exc
+        return HttpResponse(explain(exc), status=502, content_type="text/plain; charset=utf-8")
+
+    def chunks():
+        try:
+            yield from upstream.iter_content(chunk_size=64 * 1024)
+        finally:
+            upstream.close()
+
+    response = StreamingHttpResponse(chunks(), content_type=content_type)
+    if upstream.headers.get("Content-Length"):
+        response["Content-Length"] = upstream.headers["Content-Length"]
+    # The content of a path in a bundle never changes: the checksum covers it
+    response["Cache-Control"] = "private, max-age=31536000, immutable"
+    response["Content-Disposition"] = content_disposition_header(False, file_path.rsplit("/", 1)[-1])
+    # Shown as an image only, whatever the bytes are
+    response["X-Content-Type-Options"] = "nosniff"
+    response["Content-Security-Policy"] = "default-src 'none'; sandbox"
+    return response
 
 
 # --- Bundle changes ----------------------------------------------------------------
