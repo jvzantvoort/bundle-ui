@@ -3,6 +3,7 @@ from unittest import mock
 
 from django.contrib.auth import get_user_model
 from django.conf import settings
+from django.core.cache import cache
 from django.core.management import call_command
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.urls import reverse
@@ -12,7 +13,7 @@ from catalog.client import ApiError, normalize_base_url, token_expiry
 from catalog.forms import BundleQueryForm, ByteSizeField, parse_attributes
 from catalog.models import Bundle, Pool, Server, VerificationRun
 from catalog.tests import fake_server
-from catalog.tests.fake_server import TOKEN, sum_of
+from catalog.tests.fake_server import TOKEN, file_content, sum_of
 
 A = sum_of("a")
 B = sum_of("b")
@@ -87,6 +88,7 @@ class FakeServerTestCase(TestCase):
 
     def setUp(self):
         self.remote.reset()
+        cache.clear()  # Cached image lists would outlive each test's database
         self.user = get_user_model().objects.create_user("tester", password="pw")
         self.client.force_login(self.user)
         self.server = Server.objects.create(name="fake", base_url=self.api_url, token=TOKEN)
@@ -680,3 +682,113 @@ class KeyboardMarkupTests(FakeServerTestCase):
             html = self.client.get(url).content.decode()
             keys = re.findall(r'data-key="([^"]+)"', html)
             self.assertEqual(len(keys), len(set(keys)), keys)
+
+
+class ImageTests(FakeServerTestCase):
+    def setUp(self):
+        super().setUp()
+        files = self.remote.pools["default"]["bundles"][A]["files"]
+        files.insert(1, {"path": "notes.txt", "checksum": sum_of("3"), "size_bytes": 10})
+        files.append({"path": "photos/sub dir/three #1.PNG", "checksum": sum_of("4"), "size_bytes": 10})
+        self.images = ["photos/a-one.jpg", "photos/a-two.jpg", "photos/sub dir/three #1.PNG"]
+
+    def view_url(self, path):
+        return reverse("image_view", args=[self.server.pk, "default", A, path])
+
+    def raw_url(self, path):
+        return reverse("image_raw", args=[self.server.pk, "default", A, path])
+
+    def file_requests(self):
+        return [r for r in self.remote.requests if r["path"].endswith("/files")]
+
+    def test_detail_links_images_only(self):
+        response = self.client.get(self.url("bundle_detail", "default", A))
+        self.assertContains(response, f'href="{self.view_url("photos/a-one.jpg")}"')
+        self.assertContains(response, f'href="{self.view_url("photos/sub dir/three #1.PNG")}"')
+        self.assertNotContains(response, "images/view/notes.txt")
+        self.assertContains(response, "Images (3)")
+        self.assertContains(response, 'data-key="i"')
+
+    def test_viewer_steps_through_all_images(self):
+        first = self.client.get(self.view_url("photos/a-one.jpg"))
+        self.assertContains(first, "1 of 3")
+        self.assertContains(first, f'src="{self.raw_url("photos/a-one.jpg")}"')
+        self.assertContains(first, f'href="{self.view_url("photos/a-two.jpg")}" rel="next"')
+        self.assertNotContains(first, 'rel="prev"')
+        self.assertContains(first, f'rel="prefetch" as="image" href="{self.raw_url("photos/a-two.jpg")}"')
+
+        last = self.client.get(self.view_url("photos/sub dir/three #1.PNG"))
+        self.assertContains(last, "3 of 3")
+        self.assertContains(last, f'href="{self.view_url("photos/a-two.jpg")}" rel="prev"')
+        self.assertNotContains(last, 'rel="next"')
+
+        # The file list is fetched once per bundle, not on every step
+        self.assertEqual(len(self.file_requests()), 1)
+
+    def test_viewer_refuses_files_that_are_not_images(self):
+        self.assertEqual(self.client.get(self.view_url("notes.txt")).status_code, 404)
+        self.assertEqual(self.client.get(self.view_url("photos/missing.jpg")).status_code, 404)
+
+    def test_gallery_pages(self):
+        files = self.remote.pools["default"]["bundles"][A]["files"]
+        for number in range(60):
+            files.append({"path": f"many/{number:03}.jpg", "checksum": sum_of("5"), "size_bytes": 1})
+        response = self.client.get(self.url("bundle_images", "default", A))
+        self.assertContains(response, "63 images")
+        self.assertEqual(len(response.context["page_paths"]), 48)
+        self.assertContains(response, 'loading="lazy"', count=48)
+        self.assertEqual(response.context["pager"]["pages"], 2)
+        second = self.client.get(self.url("bundle_images", "default", A), {"page": 2})
+        self.assertEqual(len(second.context["page_paths"]), 15)
+        self.assertContains(second, "49.")
+
+        # The viewer links back to the gallery page that holds the image
+        viewer = self.client.get(self.view_url("many/050.jpg"))
+        self.assertContains(viewer, f'href="{self.url("bundle_images", "default", A)}?page=2"')
+
+    def test_raw_streams_the_image_with_safe_headers(self):
+        path = "photos/sub dir/three #1.PNG"
+        response = self.client.get(self.raw_url(path))
+        self.assertEqual(response.status_code, 200)
+        self.assertEqual(b"".join(response.streaming_content), file_content(path))
+        self.assertEqual(response["Content-Type"], "image/png")
+        self.assertEqual(response["Content-Length"], str(len(file_content(path))))
+        self.assertIn("immutable", response["Cache-Control"])
+        self.assertEqual(response["X-Content-Type-Options"], "nosniff")
+        self.assertIn("sandbox", response["Content-Security-Policy"])
+        self.assertIn("inline", response["Content-Disposition"])
+        # The token is sent to the bundle-server, never to the browser
+        self.assertNotIn(TOKEN, str(response.headers))
+
+    def test_raw_refuses_other_files_without_asking_the_server(self):
+        before = len(self.remote.requests)
+        self.assertEqual(self.client.get(self.raw_url("notes.txt")).status_code, 404)
+        self.assertEqual(len(self.remote.requests), before)
+
+    def test_raw_reports_server_problems(self):
+        self.assertEqual(self.client.get(self.raw_url("photos/missing.jpg")).status_code, 404)
+        self.go_offline()
+        response = self.client.get(self.raw_url("photos/a-one.jpg"))
+        self.assertEqual(response.status_code, 502)
+
+    def test_offline_gallery_goes_back_to_the_bundle(self):
+        self.open_bundle()
+        self.go_offline()
+        response = self.client.get(self.url("bundle_images", "default", A))
+        self.assertRedirects(response, self.url("bundle_detail", "default", A), fetch_redirect_response=False)
+
+    def test_images_need_a_login(self):
+        self.client.logout()
+        for url in (self.url("bundle_images", "default", A), self.view_url("photos/a-one.jpg"), self.raw_url("photos/a-one.jpg")):
+            response = self.client.get(url)
+            self.assertEqual(response.status_code, 302, url)
+            self.assertIn("/login/", response["Location"])
+
+    def test_viewer_keys(self):
+        html = self.client.get(self.view_url("photos/a-two.jpg")).content.decode()
+        for needle in ('data-key="n" data-key-alt="ArrowRight"', 'data-key="p" data-key-alt="ArrowLeft"',
+                       'data-key="a"', 'data-key="f"', 'data-key="b"'):
+            self.assertIn(needle, html)
+        import re
+        keys = re.findall(r'data-key="([^"]+)"', html)
+        self.assertEqual(len(keys), len(set(keys)), keys)

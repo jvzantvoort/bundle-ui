@@ -73,6 +73,7 @@ on first start.
 | Servers | Select, add, edit and remove servers. The one in `.env` is configured at startup. |
 | Pools | Select a pool on the selected server. |
 | Bundles | Browse, filter, sort, and list files. |
+| Images | Click an image in a bundle's file list to view it, then step through all of the bundle's images. Or scroll through them as a grid. |
 | Query | Search by metadata, size, date, checksum, or file path across the pool. |
 | Metadata | Edit the title on the server, and notes and key/value attributes locally. |
 | Tags | Read, add, rename and remove on a bundle, or rename and delete across a pool. |
@@ -85,6 +86,10 @@ server-side metadata you can change**. Notes and attributes stay in the local da
 Rename isn't an API operation, so it adds the new tag and then removes the old one. If the second
 step fails, the bundle has both tags and nothing is lost. A pool-wide change reports any bundles
 that failed.
+
+The UI fetches images from the bundle-server itself, so the API token never reaches the browser.
+JPEG (including MPO), PNG, GIF, WebP, AVIF and BMP files are shown; other files, SVG among them,
+are not served. A bundle's contents never change, so browsers keep the images cached.
 
 ## Keyboard
 
@@ -101,6 +106,8 @@ Press `?` on any page for the shortcuts available there.
 | `e` | Edit title | `v` | Verify bundle |
 | `t` | Add tag | `m` | Edit local notes |
 | `b` | Back | `r` | Run query / check health again |
+| `i` | Images of a bundle | `n` / `p` or `→` / `←` | Next / previous image in the viewer |
+| `a` | All images (viewer) | `f` | Image at full size in a new tab |
 
 Everything also works with `Tab` and `Enter`, including without JavaScript.
 

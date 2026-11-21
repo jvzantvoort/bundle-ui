@@ -1,5 +1,6 @@
 // Keyboard layer. Any element with data-key="x" (or a chord, "g b") gets a shortcut;
 // data-key-label adds it to the help dialog, so help always matches the current page.
+// data-key-alt gives an element a second key, such as an arrow key.
 (function () {
   "use strict";
 
@@ -16,7 +17,9 @@
   function bindings() {
     const map = new Map();
     document.querySelectorAll("[data-key]").forEach((el) => {
-      if (!el.disabled && !map.has(el.dataset.key)) map.set(el.dataset.key, el);
+      if (el.disabled) return;
+      if (!map.has(el.dataset.key)) map.set(el.dataset.key, el);
+      if (el.dataset.keyAlt && !map.has(el.dataset.keyAlt)) map.set(el.dataset.keyAlt, el);
     });
     return map;
   }
@@ -55,19 +58,26 @@
   function openHelp() {
     const list = help.querySelector("[data-help-list]");
     list.replaceChildren();
-    const add = (key, label) => {
+    // keys: one key or chord ("g b"), or a list of alternatives
+    const add = (keys, label) => {
       const dt = document.createElement("dt");
-      key.split(" ").forEach((part) => {
-        const kbd = document.createElement("kbd");
-        kbd.textContent = part;
-        dt.append(kbd, " ");
+      [].concat(keys).forEach((key, index) => {
+        if (index > 0) dt.append("or ");
+        key.split(" ").forEach((part) => {
+          const kbd = document.createElement("kbd");
+          kbd.textContent = part;
+          dt.append(kbd, " ");
+        });
       });
       const dd = document.createElement("dd");
       dd.textContent = label;
       list.append(dt, dd);
     };
+    const ARROWS = { ArrowLeft: "←", ArrowRight: "→", ArrowUp: "↑", ArrowDown: "↓" };
     bindings().forEach((el, key) => {
-      if (el.dataset.keyLabel) add(key, el.dataset.keyLabel);
+      if (!el.dataset.keyLabel || key !== el.dataset.key) return; // alternates are shown with their element
+      const alt = el.dataset.keyAlt;
+      add(alt ? [key, ARROWS[alt] || alt] : key, el.dataset.keyLabel);
     });
     if (document.querySelector("[data-row]")) {
       add("j", "Next row");

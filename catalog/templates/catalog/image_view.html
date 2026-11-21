@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% load catalog_extras %}
+{% block title %}{{ path|basename }}{% endblock %}
+{% block head %}
+{% if next_path %}<link rel="prefetch" as="image" href="{% url 'image_raw' server.pk pool.name checksum next_path %}">{% endif %}
+{% if prev_path %}<link rel="prefetch" as="image" href="{% url 'image_raw' server.pk pool.name checksum prev_path %}">{% endif %}
+{% endblock %}
+{% block content %}
+{% url 'image_raw' server.pk pool.name checksum path as raw_url %}
+<div class="viewer-head">
+  <div class="viewer-title">
+    <strong class="break">{{ path }}</strong>
+    <span class="muted">{{ number }} of {{ paths|length }}{% if title %} · {{ title }}{% endif %}</span>
+  </div>
+  <nav class="actions" aria-label="Images">
+    {% if prev_path %}
+    <a class="button" href="{% url 'image_view' server.pk pool.name checksum prev_path %}" rel="prev" data-key="p" data-key-alt="ArrowLeft" data-key-label="Previous image"><kbd>p</kbd> Previous</a>
+    {% else %}<span class="button" aria-disabled="true">Previous</span>{% endif %}
+    {% if next_path %}
+    <a class="button primary" href="{% url 'image_view' server.pk pool.name checksum next_path %}" rel="next" data-key="n" data-key-alt="ArrowRight" data-key-label="Next image">Next <kbd>n</kbd></a>
+    {% else %}<span class="button" aria-disabled="true">Next</span>{% endif %}
+    <a class="button" href="{% url 'bundle_images' server.pk pool.name checksum %}{% if gallery_page > 1 %}?page={{ gallery_page }}{% endif %}" data-key="a" data-key-label="All images"><kbd>a</kbd> All images</a>
+    <a class="button" href="{{ raw_url }}" target="_blank" rel="noopener" data-key="f" data-key-label="Full size in a new tab"><kbd>f</kbd> Full size</a>
+    <a class="button" href="{% url 'bundle_detail' server.pk pool.name checksum %}" data-key="b" data-key-label="Back to the bundle"><kbd>b</kbd> Bundle</a>
+  </nav>
+</div>
+<figure class="viewer">
+  <a href="{% if next_path %}{% url 'image_view' server.pk pool.name checksum next_path %}{% else %}{{ raw_url }}{% endif %}" title="{% if next_path %}Next image{% else %}Full size{% endif %}">
+    <img src="{{ raw_url }}" alt="{{ path }}">
+  </a>
+</figure>
+{% endblock %}

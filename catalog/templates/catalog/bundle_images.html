@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% load catalog_extras %}
+{% block title %}Images · {{ title|default:"Untitled bundle" }}{% endblock %}
+{% block content %}
+<div class="page-head">
+  <div>
+    <h1>Images in {% if title %}{{ title }}{% else %}<em>(untitled)</em>{% endif %}</h1>
+    <p class="muted">{{ paths|length }} image{{ paths|length|pluralize }}. Open one to step through them with <kbd>n</kbd> and <kbd>p</kbd>.</p>
+  </div>
+  <div class="actions">
+    <a class="button" href="{% url 'bundle_detail' server.pk pool.name checksum %}" data-key="b" data-key-label="Back to the bundle"><kbd>b</kbd> Bundle</a>
+  </div>
+</div>
+
+{% if page_paths %}
+<ul class="gallery">
+  {% for path in page_paths %}
+  <li data-row>
+    <a href="{% url 'image_view' server.pk pool.name checksum path %}" data-row-link>
+      <img src="{% url 'image_raw' server.pk pool.name checksum path %}" alt="{{ path }}" loading="lazy" decoding="async">
+      <span class="gallery-name break"><span class="muted">{{ first_number|add:forloop.counter0 }}.</span> {{ path|basename }}</span>
+    </a>
+  </li>
+  {% endfor %}
+</ul>
+{% include "catalog/_pager.html" %}
+{% else %}
+<p class="empty">This bundle has no images.</p>
+{% endif %}
+{% endblock %}

@@ -9,6 +9,9 @@
   </div>
   <div class="actions">
     <a class="button" href="{% url 'bundle_list' server.pk pool.name %}" data-key="b" data-key-label="Back to bundles"><kbd>b</kbd> Bundles</a>
+    {% if image_count %}
+    <a class="button" href="{% url 'bundle_images' server.pk pool.name bundle.checksum %}" data-key="i" data-key-label="Browse the images">Images ({{ image_count }}) <kbd>i</kbd></a>
+    {% endif %}
     {% if not offline %}
     <form method="post" action="{% url 'bundle_verify' server.pk pool.name bundle.checksum %}">
       {% csrf_token %}
@@ -147,7 +150,7 @@
     <tbody>
       {% for file in files %}
       <tr data-row>
-        <td class="break"><span tabindex="-1" data-row-link>{{ file.path }}</span></td>
+        <td class="break">{% if file.path|is_image %}<a href="{% url 'image_view' server.pk pool.name bundle.checksum file.path %}" data-row-link>{{ file.path }}</a>{% else %}<span tabindex="-1" data-row-link>{{ file.path }}</span>{% endif %}</td>
         <td class="mono" title="{{ file.checksum }}">{{ file.checksum|shortsum }}</td>
         <td class="num">{{ file.size_bytes|filesizeformat }}</td>
       </tr>
