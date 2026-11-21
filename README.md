@@ -58,6 +58,81 @@ podman-compose pull web
 podman-compose down && podman-compose up -d
 ```
 
+## Kubernetes with Helm
+
+The chart in `charts/bundle-ui` runs the same three parts on Kubernetes: the web UI, the sync
+worker and PostgreSQL. It pulls the image CI publishes to `ghcr.io/jvzantvoort/bundle-ui`, so a
+change reaches the cluster by being pushed to `main`. podman-compose keeps working as before.
+
+| Value | Default |
+| --- | --- |
+| `ingress.host` | `bundle-ui.apps.vanzantvoort.org`, through Traefik with TLS |
+| `ingress.tls.secretName` | empty: Traefik's default self-signed certificate, like the other `*.apps` hosts |
+| `config.bundleServer.url` | `http://storage.int.vanzantvoort.org:8080/api/v1` |
+| `config.requireLogin` | `true` |
+| `postgresql.persistence.pv.hostPath` | `/var/lib/rancher/storage/bundle-ui/postgres` on node `k3s` |
+
+### Storage
+
+PostgreSQL keeps its data in a local-filesystem PersistentVolume that the chart creates on one
+node, like `registry-pv`: `hostPath` with `DirectoryOrCreate`, pinned to the node with
+`nodeAffinity`, and `Retain`. `helm uninstall` keeps the volume, its claim and the data. To use a
+volume you made yourself, set `postgresql.persistence.existingClaim` and `pv.create: false`.
+
+### Install
+
+The secrets live in a Secret you create, so they never pass through helm values or git:
+
+```sh
+kubectl create namespace bundle-ui
+
+# Three random values; the bundle-server token is read without echoing it
+read -rs -p "bundle-server token: " TOKEN && echo
+kubectl -n bundle-ui create secret generic bundle-ui-secrets \
+  --from-literal=DJANGO_SECRET_KEY="$(openssl rand -hex 32)" \
+  --from-literal=POSTGRES_PASSWORD="$(openssl rand -hex 24)" \
+  --from-literal=ADMIN_PASSWORD="$(openssl rand -hex 16)" \
+  --from-literal=BUNDLE_SERVER_TOKEN="$TOKEN"
+unset TOKEN
+
+helm upgrade --install bundle-ui charts/bundle-ui -n bundle-ui
+```
+
+To change the token later, without it showing up in your shell history:
+
+```sh
+read -rs -p "bundle-server token: " TOKEN && echo
+kubectl -n bundle-ui patch secret bundle-ui-secrets --type merge \
+  -p "{\"stringData\":{\"BUNDLE_SERVER_TOKEN\":\"$TOKEN\"}}"
+unset TOKEN
+kubectl -n bundle-ui rollout restart deploy/bundle-ui-web deploy/bundle-ui-sync
+```
+
+The cluster pulls the image anonymously, so the ghcr.io package must be public. For a private
+package, create a pull secret from a token with only the `read:packages` scope and pass
+`--set 'imagePullSecrets[0].name=ghcr-pull'`:
+
+```sh
+kubectl -n bundle-ui create secret docker-registry ghcr-pull \
+  --docker-server=ghcr.io --docker-username=jvzantvoort --docker-password=<token>
+```
+
+For a trusted certificate, create a `kubernetes.io/tls` Secret in the namespace and pass
+`--set ingress.tls.secretName=<name>`. Read the admin password with
+`kubectl -n bundle-ui get secret bundle-ui-secrets -o jsonpath='{.data.ADMIN_PASSWORD}' | base64 -d`.
+
+### Develop
+
+After CI has published a change to `main`, restart the pods to pull the new `latest`:
+
+```sh
+kubectl -n bundle-ui rollout restart deploy/bundle-ui-web deploy/bundle-ui-sync
+```
+
+To run one exact build, pass `--set image.tag=sha-<commit>` to `helm upgrade`. A change to the
+chart itself is applied with the same `helm upgrade --install` command; settings changes restart
+the pods by themselves. CI runs `helm lint` and `helm template` on every push.
+
 ## Access
 
 With `REQUIRE_LOGIN=false`, anyone who can reach the port can use the UI with no login: they can

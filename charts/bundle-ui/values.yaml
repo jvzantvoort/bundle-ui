@@ -1,0 +1,102 @@
+# Default values for bundle-ui. Secrets never go in this file: see `secrets`.
+
+image:
+  repository: ghcr.io/jvzantvoort/bundle-ui
+  # Defaults to the chart's appVersion. Use sha-<commit> to pin a CI build.
+  tag: ""
+  # Always, so that a moving tag like latest picks up new CI builds on restart
+  pullPolicy: Always
+
+# Needed while the ghcr.io package is private, for example:
+#   - name: ghcr-pull
+imagePullSecrets: []
+
+# Settings that are not secret. They become environment variables, as in .env.
+config:
+  # false: anyone who can reach the UI can use it, with the configured API tokens
+  requireLogin: true
+  adminUsername: admin
+  # The bundle-server configured at startup. More can be added in the UI.
+  bundleServer:
+    name: storage
+    url: http://storage.int.vanzantvoort.org:8080/api/v1
+  timeZone: UTC
+  # Seconds between full background syncs
+  syncInterval: 900
+  logLevel: INFO
+  gunicornWorkers: 2
+  # Extra environment variables for the web and sync containers
+  extraEnv: {}
+
+# DJANGO_SECRET_KEY, POSTGRES_PASSWORD, ADMIN_PASSWORD and BUNDLE_SERVER_TOKEN.
+# Create the Secret yourself (see README) and name it here, so the values never
+# pass through helm. Set create: true only for throwaway installs.
+secrets:
+  existingSecret: bundle-ui-secrets
+  create: false
+  values:
+    DJANGO_SECRET_KEY: ""
+    POSTGRES_PASSWORD: ""
+    ADMIN_PASSWORD: ""
+    BUNDLE_SERVER_TOKEN: ""
+
+web:
+  replicas: 1
+  resources:
+    requests:
+      cpu: 50m
+      memory: 192Mi
+    limits:
+      memory: 512Mi
+
+sync:
+  enabled: true
+  resources:
+    requests:
+      cpu: 10m
+      memory: 128Mi
+    limits:
+      memory: 384Mi
+
+service:
+  type: ClusterIP
+  port: 80
+
+ingress:
+  enabled: true
+  className: traefik
+  host: bundle-ui.apps.vanzantvoort.org
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: websecure
+    traefik.ingress.kubernetes.io/router.tls: "true"
+  tls:
+    enabled: true
+    # A kubernetes.io/tls Secret in this namespace. Empty: Traefik serves its
+    # default self-signed certificate, as for the other *.apps hosts today.
+    secretName: ""
+
+postgresql:
+  image:
+    repository: docker.io/library/postgres
+    tag: 17-alpine
+  database: bundleui
+  username: bundleui
+  resources:
+    requests:
+      cpu: 25m
+      memory: 128Mi
+    limits:
+      memory: 512Mi
+  persistence:
+    size: 5Gi
+    # A local-filesystem PersistentVolume on one node, like registry-pv: the data
+    # stays on disk when the release, the claim or the volume is deleted.
+    storageClassName: bundle-ui-local
+    # Use a claim you created yourself instead; the settings below then do nothing
+    existingClaim: ""
+    pv:
+      create: true
+      name: bundle-ui-postgres-pv
+      # Created by the kubelet if it does not exist yet
+      hostPath: /var/lib/rancher/storage/bundle-ui/postgres
+      node: k3s

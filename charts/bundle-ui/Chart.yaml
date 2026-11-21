@@ -1,0 +1,9 @@
+apiVersion: v2
+name: bundle-ui
+description: Keyboard-friendly web UI for bundle-server, with PostgreSQL and a background cache sync
+type: application
+version: 0.1.0
+appVersion: "latest"
+home: https://github.com/jvzantvoort/bundle-ui
+sources:
+  - https://github.com/jvzantvoort/bundle-ui

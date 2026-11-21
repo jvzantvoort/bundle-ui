@@ -50,6 +50,26 @@ jobs:
           DJANGO_DEBUG: '1'
       - run: python manage.py test catalog
 
+  chart:
+    name: Lint the Helm chart
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: azure/setup-helm@v4
+        with:
+          version: v4.3.2
+      - name: Lint
+        run: helm lint --strict charts/bundle-ui
+      - name: Render with the defaults and with every optional part switched
+        run: |
+          helm template t charts/bundle-ui > /dev/null
+          helm template t charts/bundle-ui \
+            --set secrets.create=true \
+            --set secrets.values.DJANGO_SECRET_KEY=x,secrets.values.POSTGRES_PASSWORD=x \
+            --set secrets.values.ADMIN_PASSWORD=x,secrets.values.BUNDLE_SERVER_TOKEN=x \
+            --set ingress.enabled=false --set sync.enabled=false \
+            --set postgresql.persistence.existingClaim=claim > /dev/null
+
   image:
     name: Build and publish container image
     needs: test
