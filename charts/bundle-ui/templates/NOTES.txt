@@ -1,0 +1,17 @@
+bundle-ui is installed in namespace {{ .Release.Namespace }}.
+
+{{- if .Values.ingress.enabled }}
+Open {{ ternary "https" "http" .Values.ingress.tls.enabled }}://{{ .Values.ingress.host }}
+{{- else }}
+kubectl -n {{ .Release.Namespace }} port-forward svc/{{ include "bundle-ui.fullname" . }} 8080:{{ .Values.service.port }}
+then open http://localhost:8080
+{{- end }}
+
+Follow the start-up:
+  kubectl -n {{ .Release.Namespace }} rollout status deploy/{{ include "bundle-ui.fullname" . }}-web
+  kubectl -n {{ .Release.Namespace }} logs deploy/{{ include "bundle-ui.fullname" . }}-web -f
+{{- if and .Values.postgresql.persistence.pv.create (not .Values.postgresql.persistence.existingClaim) }}
+
+The database is on node {{ .Values.postgresql.persistence.pv.node }} in {{ .Values.postgresql.persistence.pv.hostPath }}.
+helm uninstall keeps the volume, its claim and the data; delete them yourself to start over.
+{{- end }}

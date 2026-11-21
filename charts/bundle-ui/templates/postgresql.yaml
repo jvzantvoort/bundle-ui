@@ -1,0 +1,132 @@
+{{- $persistence := .Values.postgresql.persistence -}}
+{{- if and $persistence.pv.create (not $persistence.existingClaim) }}
+# A local-filesystem volume on one node, kept on uninstall: Retain keeps the data
+# on disk, and the resource policy keeps the PersistentVolume object itself.
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: {{ $persistence.pv.name }}
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  capacity:
+    storage: {{ $persistence.size }}
+  accessModes: ["ReadWriteOnce"]
+  persistentVolumeReclaimPolicy: Retain
+  storageClassName: {{ $persistence.storageClassName }}
+  volumeMode: Filesystem
+  hostPath:
+    path: {{ $persistence.pv.hostPath }}
+    type: DirectoryOrCreate
+  nodeAffinity:
+    required:
+      nodeSelectorTerms:
+        - matchExpressions:
+            - key: kubernetes.io/hostname
+              operator: In
+              values: [{{ $persistence.pv.node | quote }}]
+  claimRef:
+    apiVersion: v1
+    kind: PersistentVolumeClaim
+    name: {{ include "bundle-ui.claimName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+{{- end }}
+{{- if not $persistence.existingClaim }}
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: {{ include "bundle-ui.claimName" . }}
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+  annotations:
+    helm.sh/resource-policy: keep
+spec:
+  accessModes: ["ReadWriteOnce"]
+  storageClassName: {{ $persistence.storageClassName }}
+  {{- if $persistence.pv.create }}
+  volumeName: {{ $persistence.pv.name }}
+  {{- end }}
+  resources:
+    requests:
+      storage: {{ $persistence.size }}
+---
+{{- end }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bundle-ui.postgresHost" . }}
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  clusterIP: None
+  selector:
+    {{- include "bundle-ui.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+  ports:
+    - name: postgresql
+      port: 5432
+      targetPort: postgresql
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: {{ include "bundle-ui.postgresHost" . }}
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+    app.kubernetes.io/component: postgresql
+spec:
+  serviceName: {{ include "bundle-ui.postgresHost" . }}
+  replicas: 1
+  selector:
+    matchLabels:
+      {{- include "bundle-ui.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: postgresql
+  template:
+    metadata:
+      labels:
+        {{- include "bundle-ui.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: postgresql
+    spec:
+      containers:
+        - name: postgresql
+          image: "{{ .Values.postgresql.image.repository }}:{{ .Values.postgresql.image.tag }}"
+          env:
+            - name: POSTGRES_DB
+              value: {{ .Values.postgresql.database | quote }}
+            - name: POSTGRES_USER
+              value: {{ .Values.postgresql.username | quote }}
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: {{ include "bundle-ui.secretName" . }}
+                  key: POSTGRES_PASSWORD
+            # A subdirectory, so the volume root can hold other files
+            - name: PGDATA
+              value: /var/lib/postgresql/data/pgdata
+          ports:
+            - name: postgresql
+              containerPort: 5432
+          readinessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            periodSeconds: 5
+            timeoutSeconds: 3
+          livenessProbe:
+            exec:
+              command: ["sh", "-c", "pg_isready -U \"$POSTGRES_USER\" -d \"$POSTGRES_DB\""]
+            initialDelaySeconds: 30
+            periodSeconds: 15
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.postgresql.resources | nindent 12 }}
+          volumeMounts:
+            - name: data
+              mountPath: /var/lib/postgresql/data
+      volumes:
+        - name: data
+          persistentVolumeClaim:
+            claimName: {{ include "bundle-ui.claimName" . }}

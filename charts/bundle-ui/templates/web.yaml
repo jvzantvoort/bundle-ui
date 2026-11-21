@@ -1,0 +1,185 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bundle-ui.fullname" . }}-web
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  replicas: {{ .Values.web.replicas }}
+  selector:
+    matchLabels:
+      {{- include "bundle-ui.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: web
+  template:
+    metadata:
+      labels:
+        {{- include "bundle-ui.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: web
+      annotations:
+        # Restart when the settings change
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: web
+          image: {{ include "bundle-ui.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Applies migrations, creates the login and the configured server, runs gunicorn
+          args: ["web"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "bundle-ui.fullname" . }}
+          env:
+            {{- include "bundle-ui.appEnv" . | nindent 12 }}
+          ports:
+            - name: http
+              containerPort: 8000
+          # Django only answers host names it knows, and the kubelet would send the pod IP
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 5
+            failureThreshold: 36
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 10
+            timeoutSeconds: 3
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+              httpHeaders:
+                - name: Host
+                  value: localhost
+            periodSeconds: 20
+            timeoutSeconds: 5
+          resources:
+            {{- toYaml .Values.web.resources | nindent 12 }}
+          {{- include "bundle-ui.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+            - name: shm
+              mountPath: /dev/shm
+      volumes:
+        - name: tmp
+          emptyDir: {}
+        # gunicorn keeps its worker heartbeat files here
+        - name: shm
+          emptyDir:
+            medium: Memory
+            sizeLimit: 16Mi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "bundle-ui.fullname" . }}
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+spec:
+  type: {{ .Values.service.type }}
+  selector:
+    {{- include "bundle-ui.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: web
+  ports:
+    - name: http
+      port: {{ .Values.service.port }}
+      targetPort: http
+{{- if .Values.ingress.enabled }}
+---
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "bundle-ui.fullname" . }}
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+  {{- with .Values.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  ingressClassName: {{ .Values.ingress.className }}
+  {{- if .Values.ingress.tls.enabled }}
+  tls:
+    - hosts: [{{ .Values.ingress.host | quote }}]
+      {{- with .Values.ingress.tls.secretName }}
+      secretName: {{ . }}
+      {{- end }}
+  {{- end }}
+  rules:
+    - host: {{ .Values.ingress.host | quote }}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: {{ include "bundle-ui.fullname" . }}
+                port:
+                  name: http
+{{- end }}
+{{- if .Values.sync.enabled }}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "bundle-ui.fullname" . }}-sync
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+    app.kubernetes.io/component: sync
+spec:
+  # One worker: two would fetch every bundle twice
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      {{- include "bundle-ui.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: sync
+  template:
+    metadata:
+      labels:
+        {{- include "bundle-ui.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: sync
+      annotations:
+        checksum/config: {{ include (print $.Template.BasePath "/config.yaml") . | sha256sum }}
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: sync
+          image: {{ include "bundle-ui.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          # Waits for the web container's migrations, then syncs the cache
+          args: ["sync"]
+          envFrom:
+            - configMapRef:
+                name: {{ include "bundle-ui.fullname" . }}
+          env:
+            {{- include "bundle-ui.appEnv" . | nindent 12 }}
+          resources:
+            {{- toYaml .Values.sync.resources | nindent 12 }}
+          {{- include "bundle-ui.containerSecurity" . | nindent 10 }}
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp
+      volumes:
+        - name: tmp
+          emptyDir: {}
+{{- end }}

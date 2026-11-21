@@ -1,0 +1,40 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: {{ include "bundle-ui.fullname" . }}
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+data:
+  REQUIRE_LOGIN: {{ .Values.config.requireLogin | quote }}
+  ADMIN_USERNAME: {{ .Values.config.adminUsername | quote }}
+  BUNDLE_SERVER_NAME: {{ .Values.config.bundleServer.name | quote }}
+  BUNDLE_SERVER_URL: {{ .Values.config.bundleServer.url | quote }}
+  TIME_ZONE: {{ .Values.config.timeZone | quote }}
+  BUNDLE_SYNC_INTERVAL: {{ .Values.config.syncInterval | quote }}
+  LOG_LEVEL: {{ .Values.config.logLevel | quote }}
+  GUNICORN_WORKERS: {{ .Values.config.gunicornWorkers | quote }}
+  POSTGRES_HOST: {{ include "bundle-ui.postgresHost" . | quote }}
+  POSTGRES_DB: {{ .Values.postgresql.database | quote }}
+  POSTGRES_USER: {{ .Values.postgresql.username | quote }}
+  {{- if .Values.ingress.enabled }}
+  DJANGO_ALLOWED_HOSTS: {{ .Values.ingress.host | quote }}
+  DJANGO_CSRF_TRUSTED_ORIGINS: {{ printf "%s://%s" (ternary "https" "http" .Values.ingress.tls.enabled) .Values.ingress.host | quote }}
+  DJANGO_SECURE_COOKIES: {{ .Values.ingress.tls.enabled | quote }}
+  {{- end }}
+  {{- range $name, $value := .Values.config.extraEnv }}
+  {{ $name }}: {{ $value | quote }}
+  {{- end }}
+{{- if .Values.secrets.create }}
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: {{ include "bundle-ui.fullname" . }}
+  labels:
+    {{- include "bundle-ui.labels" . | nindent 4 }}
+type: Opaque
+stringData:
+  {{- range $key := list "DJANGO_SECRET_KEY" "POSTGRES_PASSWORD" "ADMIN_PASSWORD" "BUNDLE_SERVER_TOKEN" }}
+  {{ $key }}: {{ required (printf "secrets.values.%s is required when secrets.create is true" $key) (index $.Values.secrets.values $key) | quote }}
+  {{- end }}
+{{- end }}
