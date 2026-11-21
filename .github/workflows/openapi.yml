@@ -1,0 +1,23 @@
+name: OpenAPI
+
+# openapi.yaml is a copy of the canonical file in bundle-server. The weekly run
+# notices when bundle-server changes the API while nothing is pushed here.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    - cron: '17 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  in-sync:
+    name: openapi.yaml matches bundle-server
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Compare with bundle-server
+        run: scripts/sync-openapi.sh --check

@@ -206,6 +206,14 @@ are kept.
 
 Without `POSTGRES_HOST`, Django uses SQLite, which is handy for local development.
 
+## API specification
+
+`openapi.yaml` is a copy of the canonical file in
+[bundle-server](https://github.com/jvzantvoort/bundle-server/blob/main/openapi.yaml).
+Change the API there, then run `scripts/sync-openapi.sh` here to update the copy.
+The OpenAPI workflow fails when the copy differs, on every push and pull request
+and once a week.
+
 ## Tests
 
 The tests run against an in-memory fake of the API, so they never touch a real server:
