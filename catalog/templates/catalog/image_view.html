@@ -29,4 +29,35 @@
     <img src="{{ raw_url }}" alt="{{ path }}">
   </a>
 </figure>
+{% if media %}
+<section class="card media-info" aria-labelledby="media-heading">
+  <h2 id="media-heading" class="visually-hidden">Media metadata</h2>
+  <dl class="facts">
+    <dt>Resolution</dt><dd>{{ media.resolution|resolution }}{% if media.format %} · {{ media.format }}{% endif %}</dd>
+    <dt>Taken</dt><dd>{{ media.taken_at|takentime }}</dd>
+    {% if media.device %}
+    <dt>Device</dt><dd>{{ media.device|device_name }}{% if media.device.lens %} · {{ media.device.lens }}{% endif %}</dd>
+    {% if media.device.software %}<dt>Software</dt><dd>{{ media.device.software }}</dd>{% endif %}
+    {% endif %}
+    {% if media.gps %}
+    <dt>Location</dt>
+    <dd><a href="https://www.openstreetmap.org/?mlat={{ media.gps.latitude|stringformat:'f' }}&amp;mlon={{ media.gps.longitude|stringformat:'f' }}#map=15/{{ media.gps.latitude|stringformat:'f' }}/{{ media.gps.longitude|stringformat:'f' }}" target="_blank" rel="noopener noreferrer" data-key="l" data-key-label="Show the location on a map">{{ media.gps.latitude }}, {{ media.gps.longitude }}</a> <kbd>l</kbd></dd>
+    {% endif %}
+  </dl>
+  {% if media.exif_items %}
+  <details>
+    <summary data-key="x" data-key-label="Show or hide the EXIF data">EXIF data ({{ media.exif_items|length }} tags) <kbd>x</kbd></summary>
+    <div class="table-wrap">
+      <table>
+        <tbody>
+          {% for name, value in media.exif_items %}
+          <tr><th scope="row">{{ name }}</th><td class="break">{{ value|exif_value }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </details>
+  {% endif %}
+</section>
+{% endif %}
 {% endblock %}

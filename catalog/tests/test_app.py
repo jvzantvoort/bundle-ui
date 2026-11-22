@@ -792,3 +792,69 @@ class ImageTests(FakeServerTestCase):
         import re
         keys = re.findall(r'data-key="([^"]+)"', html)
         self.assertEqual(len(keys), len(set(keys)), keys)
+
+
+class MediaTests(FakeServerTestCase):
+    def setUp(self):
+        super().setUp()
+        self.bundle = self.remote.pools["default"]["bundles"][A]
+        self.bundle["media"] = {
+            "devices": [{"make": "Canon", "model": "Canon EOS R6", "lens": "RF24-105mm", "files": 1}],
+            "files": {
+                "photos/a-one.jpg": {
+                    "type": "image", "format": "JPEG",
+                    "resolution": {"width": 4000, "height": 3000},
+                    "taken_at": "2026:11:01 12:34:56",
+                    "device": {"make": "Canon", "model": "Canon EOS R6", "lens": "RF24-105mm"},
+                    "gps": {"latitude": 64.1466, "longitude": -21.9426},
+                    "exif": {"ISO": 100, "FNumber": 4.0, "Make": "Canon"},
+                },
+            },
+        }
+
+    def view_url(self, path):
+        return reverse("image_view", args=[self.server.pk, "default", A, path])
+
+    def test_detail_shows_devices_and_file_media(self):
+        response = self.client.get(self.url("bundle_detail", "default", A))
+        self.assertContains(response, 'id="media-heading"')
+        self.assertContains(response, "by bundle-python 0.1.0")
+        self.assertContains(response, "RF24-105mm")
+        self.assertContains(response, "image 4000 × 3000")
+        self.assertContains(response, "2026-11-01 12:34")
+        # The model already names the make, so it is not repeated
+        self.assertContains(response, "<td>Canon EOS R6</td>", html=True)
+        self.assertNotContains(response, "Canon Canon")
+        # EXIF is only fetched for a single image
+        media_calls = [r["path"] for r in self.remote.requests if "/media" in r["path"]]
+        self.assertEqual(media_calls, [f"/pools/default/bundles/{A}/media"])
+
+    def test_detail_without_media_does_not_ask(self):
+        del self.bundle["media"]
+        response = self.client.get(self.url("bundle_detail", "default", A))
+        self.assertNotContains(response, 'id="media-heading"')
+        self.assertNotContains(response, "<th>Taken</th>")
+        self.assertFalse([r for r in self.remote.requests if "/media" in r["path"]])
+
+    def test_unreadable_media_leaves_the_page_working(self):
+        self.bundle["media"] = "corrupt"
+        response = self.client.get(self.url("bundle_detail", "default", A))
+        self.assertContains(response, "photos/a-one.jpg")
+        self.assertNotContains(response, 'id="media-heading"')
+
+    def test_viewer_shows_exif_and_location(self):
+        response = self.client.get(self.view_url("photos/a-one.jpg"))
+        self.assertContains(response, "4000 × 3000 · JPEG")
+        self.assertContains(response, "EXIF data (3 tags)")
+        self.assertContains(response, "<th scope=\"row\">FNumber</th><td class=\"break\">4</td>", html=True)
+        self.assertContains(response, "mlat=64.146600&amp;mlon=-21.942600")
+        self.assertContains(response, 'data-key="x"')
+        self.assertContains(response, 'data-key="l"')
+        html = response.content.decode()
+        self.assertLess(html.index(">FNumber<"), html.index(">ISO<"))
+
+    def test_viewer_without_file_media(self):
+        response = self.client.get(self.view_url("photos/a-two.jpg"))
+        self.assertEqual(response.status_code, 200)
+        self.assertNotContains(response, "EXIF data")
+        self.assertNotContains(response, 'data-key="l"')

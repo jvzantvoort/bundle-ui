@@ -126,6 +126,15 @@ class BundleClient:
                 return files
             page += 1
 
+    def get_media(self, pool, checksum):
+        """Media metadata (devices, and per file resolution, capture time, ...) without EXIF."""
+        return self._request("GET", self._bundle_path(pool, checksum) + "/media")[0]
+
+    def get_file_media(self, pool, checksum, file_path):
+        """Media metadata of one file, including its EXIF tags."""
+        path = self._bundle_path(pool, checksum) + "/media/" + quote(file_path, safe="")
+        return self._request("GET", path)[0]
+
     def open_file(self, pool, checksum, file_path):
         """Start downloading one file. The caller reads and closes the streamed response."""
         url = self.base_url + self._bundle_path(pool, checksum) + "/files/" + quote(file_path, safe="")
