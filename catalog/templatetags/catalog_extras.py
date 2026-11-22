@@ -80,8 +80,12 @@ def lookup(mapping, key):
 
 @register.filter
 def exif_value(value):
+    """An EXIF value as text. A missing value (null: an unknown 0/0 rational) is a dash;
+    text ends at its first NUL, as cameras pad values with NULs and leftover bytes."""
+    if value is None:
+        return "—"
     if isinstance(value, list):
         return ", ".join(exif_value(v) for v in value)
     if isinstance(value, float):
         return f"{value:g}"
-    return str(value)
+    return str(value).split("\x00", 1)[0].strip()
