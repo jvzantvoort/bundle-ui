@@ -26,7 +26,8 @@
 
   function activate(el) {
     const details = el.closest("details");
-    if (details) details.open = true;
+    // A <summary> toggles its own <details> when clicked
+    if (details && el.tagName !== "SUMMARY") details.open = true;
     if (el.matches("input, textarea, select")) {
       el.focus();
       if (el.select) el.select();

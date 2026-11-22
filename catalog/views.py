@@ -11,7 +11,7 @@ from django.utils import timezone
 from django.utils.http import content_disposition_header
 from django.views.decorators.http import require_POST
 
-from . import images, services
+from . import images, media, services
 from .client import ApiError, token_expiry
 from .forms import (
     AddTagForm,
@@ -315,8 +315,13 @@ def bundle_detail(request, server_id, pool, checksum):
         data, etag = client.get_bundle(pool_obj.name, checksum)
         bundle = services.upsert_detail(pool_obj, data, etag)
         files = client.list_files(pool_obj.name, checksum, page=page, page_size=PAGE_SIZE)
+        media_index = media.bundle_media(client, pool_obj.name, checksum, data)
+        if media_index:
+            for entry in files["items"]:
+                entry["media"] = media_index["by_path"].get(entry["path"])
         context.update(
             remote=data,
+            media=media_index,
             files=files["items"],
             pager=pagination(request, page, PAGE_SIZE, files["total"]),
             image_count=len(images.image_paths(server, pool_obj.name, checksum, client)),
@@ -400,6 +405,7 @@ def image_view(request, server_id, pool, checksum, file_path):
         prev_path=paths[index - 1] if index > 0 else None,
         next_path=paths[index + 1] if index + 1 < len(paths) else None,
         gallery_page=index // GALLERY_PAGE_SIZE + 1,
+        media=media.file_media(context["server"].client(), context["pool"].name, checksum, file_path),
     )
     return render(request, "catalog/image_view.html", context)
 

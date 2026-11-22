@@ -89,6 +89,28 @@ def detail(bundle):
         },
         "tags": sorted(bundle["tags"]),
         "revision": revision(bundle),
+        "links": links(bundle),
+    }
+
+
+def links(bundle):
+    base = f"/api/v1/pools/default/bundles/{bundle['checksum']}"
+    result = {"self": base, "files": base + "/files"}
+    if bundle.get("media") is not None:
+        result["media"] = base + "/media"
+    return result
+
+
+def media_index(media):
+    """The `/media` answer: every file without its EXIF data."""
+    files = [
+        {"path": path, **{k: v for k, v in entry.items() if k != "exif"}}
+        for path, entry in sorted(media["files"].items())
+    ]
+    return {
+        "version": 1, "generator": media.get("generator", "bundle-python 0.1.0"),
+        "updated_at": media.get("updated_at", "2026-11-22T10:00:00Z"),
+        "devices": media.get("devices", []), "file_count": len(files), "files": files,
     }
 
 
@@ -253,6 +275,18 @@ class Handler(BaseHTTPRequestHandler):
             if entry is None:
                 return self.error(404, "file_not_found", "file does not exist in bundle manifest")
             return self.reply_bytes(file_content(wanted), entry["checksum"])
+        if rest == "/media" or rest.startswith("/media/"):
+            media = bundle.get("media")
+            if media is None:
+                return self.error(404, "media_not_found", "bundle has no media metadata")
+            if media == "corrupt":
+                return self.error(500, "media_read_failed", "parse MEDIA.json: unexpected end of JSON input")
+            if rest == "/media":
+                return self.reply(200, media_index(media))
+            wanted = rest.removeprefix("/media/")
+            if wanted not in media["files"]:
+                return self.error(404, "media_not_found", "no media metadata for this file")
+            return self.reply(200, {"path": wanted, **media["files"][wanted]})
         if rest == "/verify" and self.command == "POST":
             return self.queue_verify(bundle)
 

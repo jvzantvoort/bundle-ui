@@ -49,6 +49,8 @@ p { margin: 0 0 .75rem; }
 code, .mono { font-family: var(--mono); font-size: .9em; }
 .muted { color: var(--muted); }
 .break { overflow-wrap: anywhere; }
+.nowrap { white-space: nowrap; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
 main:focus { outline: none; }
@@ -158,6 +160,9 @@ dialog dd { margin: 0; }
 .viewer-head { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .5rem 1rem; margin-bottom: .75rem; }
 .viewer-title { display: flex; flex-direction: column; min-width: 0; }
 .viewer { margin: 0; text-align: center; }
+.media-info { margin-top: .75rem; }
+.media-info details { margin-top: .75rem; }
+.media-info th[scope="row"] { white-space: nowrap; }
 .viewer img { max-width: 100%; max-height: calc(100vh - 11rem); object-fit: contain; background: var(--row); }
 .button[aria-disabled="true"] { opacity: .45; pointer-events: none; }
 

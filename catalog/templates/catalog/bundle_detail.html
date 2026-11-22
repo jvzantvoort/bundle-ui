@@ -103,6 +103,30 @@
   </section>
 </div>
 
+{% if media %}
+<section class="card table-wrap" aria-labelledby="media-heading">
+  <h2 id="media-heading">Media</h2>
+  <p class="card-note">{{ media.file_count }} media file{{ media.file_count|pluralize }}, scanned {{ media.updated_at|isotime }}{% if media.generator %} by {{ media.generator }}{% endif %}. Stored in the bundle's <span class="mono">.bundle/MEDIA.json</span>; it doesn't affect the checksum.</p>
+  {% if media.devices %}
+  <table>
+    <thead><tr><th>Device</th><th>Lens</th><th>Software</th><th class="num">Files</th></tr></thead>
+    <tbody>
+      {% for device in media.devices %}
+      <tr>
+        <td>{{ device|device_name|default:"—" }}</td>
+        <td>{{ device.lens|default:"—" }}</td>
+        <td>{{ device.software|default:"—" }}</td>
+        <td class="num">{{ device.files }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="empty">No device is recorded in these files.</p>
+  {% endif %}
+</section>
+{% endif %}
+
 <section class="card" aria-labelledby="local-heading">
   <h2 id="local-heading">Local metadata</h2>
   <p class="card-note">Stored only in this app's database. It is never sent to the bundle-server.</p>
@@ -146,11 +170,18 @@
   <p class="empty">The file list needs a connection to the server.</p>
   {% elif files %}
   <table>
-    <thead><tr><th>Path</th><th>Checksum</th><th class="num">Size</th></tr></thead>
+    <thead><tr><th>Path</th>{% if media %}<th>Media</th><th>Taken</th><th>Device</th>{% endif %}<th>Checksum</th><th class="num">Size</th></tr></thead>
     <tbody>
       {% for file in files %}
       <tr data-row>
         <td class="break">{% if file.path|is_image %}<a href="{% url 'image_view' server.pk pool.name bundle.checksum file.path %}" data-row-link>{{ file.path }}</a>{% else %}<span tabindex="-1" data-row-link>{{ file.path }}</span>{% endif %}</td>
+        {% if media %}
+        {% with info=file.media %}
+        <td class="nowrap">{% if info %}{{ info.type }} {{ info.resolution|resolution }}{% if info.duration_seconds %} · {{ info.duration_seconds|duration }}{% endif %}{% else %}—{% endif %}</td>
+        <td class="nowrap">{% if info %}{{ info.taken_at|takentime }}{% else %}—{% endif %}</td>
+        <td>{% if info.device %}{{ info.device|device_name }}{% else %}—{% endif %}</td>
+        {% endwith %}
+        {% endif %}
         <td class="mono" title="{{ file.checksum }}">{{ file.checksum|shortsum }}</td>
         <td class="num">{{ file.size_bytes|filesizeformat }}</td>
       </tr>

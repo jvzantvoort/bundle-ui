@@ -166,6 +166,12 @@ The UI fetches images from the bundle-server itself, so the API token never reac
 JPEG (including MPO), PNG, GIF, WebP, AVIF and BMP files are shown; other files, SVG among them,
 are not served. A bundle's contents never change, so browsers keep the images cached.
 
+Bundles scanned with [bundle-python](https://github.com/jvzantvoort/bundle-python) have media
+metadata, which bundle-server 1.2.0 and later serve read-only. The bundle page then lists the
+devices (cameras, phones) that made the files and shows each file's type, resolution, capture time
+and device; the image viewer adds the GPS position, linked to OpenStreetMap, and all EXIF tags.
+Without media metadata these parts are left out.
+
 ## Keyboard
 
 Press `?` on any page for the shortcuts available there.
@@ -183,6 +189,7 @@ Press `?` on any page for the shortcuts available there.
 | `b` | Back | `r` | Run query / check health again |
 | `i` | Images of a bundle | `n` / `p` or `→` / `←` | Next / previous image in the viewer |
 | `a` | All images (viewer) | `f` | Image at full size in a new tab |
+| `x` | EXIF data of an image | `l` | Location of an image on a map |
 
 Everything also works with `Tab` and `Enter`, including without JavaScript.
 
