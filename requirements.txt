@@ -1,4 +1,4 @@
-Django==5.2.18
+Django==5.2.19
 gunicorn==27.0.1
 psycopg[binary]==3.3.9
 requests==2.34.2
