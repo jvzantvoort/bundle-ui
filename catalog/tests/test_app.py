@@ -807,7 +807,12 @@ class MediaTests(FakeServerTestCase):
                     "taken_at": "2026:11:01 12:34:56",
                     "device": {"make": "Canon", "model": "Canon EOS R6", "lens": "RF24-105mm"},
                     "gps": {"latitude": 64.1466, "longitude": -21.9426},
-                    "exif": {"ISO": 100, "FNumber": 4.0, "Make": "Canon"},
+                    "exif": {
+                        "ISO": 100, "FNumber": 4.0,
+                        # Padded the way a GoPro HD2 pads it, and 0/0 values stored as null
+                        "Make": "Canon\x00\x00 \u00fc\u00cdx\u00c0\x13",
+                        "SubjectDistance": None, "LensSpecification": [24.0, 105.0, None, None],
+                    },
                 },
             },
         }
@@ -845,7 +850,13 @@ class MediaTests(FakeServerTestCase):
     def test_viewer_shows_exif_and_location(self):
         response = self.client.get(self.view_url("photos/a-one.jpg"))
         self.assertContains(response, "4000 × 3000 · JPEG")
-        self.assertContains(response, "EXIF data (3 tags)")
+        self.assertContains(response, "EXIF data (5 tags)")
+        self.assertContains(response, '<th scope="row">Make</th><td class="break">Canon</td>', html=True)
+        self.assertContains(response, '<th scope="row">SubjectDistance</th><td class="break">—</td>', html=True)
+        self.assertContains(
+            response, '<th scope="row">LensSpecification</th><td class="break">24, 105, —, —</td>', html=True)
+        self.assertNotIn(b"\x00", response.content)
+        self.assertNotContains(response, "None")
         self.assertContains(response, "<th scope=\"row\">FNumber</th><td class=\"break\">4</td>", html=True)
         self.assertContains(response, "mlat=64.146600&amp;mlon=-21.942600")
         self.assertContains(response, 'data-key="x"')
