@@ -19,6 +19,12 @@ updates:
     groups:
       python-packages:
         update-types: [minor, patch]
+    ignore:
+      # Stay on Django 5.2 LTS (security fixes until April 2028) rather than
+      # 6.0/6.1, which are supported for a shorter time. 5.2.x updates still
+      # come. Remove this rule to upgrade, e.g. to the 6.2 LTS.
+      - dependency-name: django
+        versions: ['>=6']
 
 # The base images in Containerfile and compose.yaml are left out on purpose: a
 # new Python or PostgreSQL version (a PostgreSQL major upgrade needs a data
