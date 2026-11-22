@@ -20,6 +20,7 @@ web)
         --threads "${GUNICORN_THREADS:-4}" \
         --timeout "${GUNICORN_TIMEOUT:-180}" \
         --worker-tmp-dir /dev/shm \
+        --no-control-socket \
         --access-logfile - \
         --error-logfile -
     ;;
